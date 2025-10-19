@@ -1,0 +1,39 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+hexengine
+hexengine.exe
+
+# Test artifacts
+*.db
+*.log
+
+# Go workspace files
+go.work
+go.work.sum
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Profiling data
+*.prof
+profiles_cpu/
+cpu.prof
+mem.prof
+block.prof
+mutex.prof
+
+# Temporary files
+*.tmp
+tmp/
+temp/
