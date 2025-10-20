@@ -1,4 +1,4 @@
-module github.com/sibexico/HexEngine
+module github.com/sibexico/HexEngine/v2
 
 go 1.24.0
 
