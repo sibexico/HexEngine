@@ -4,8 +4,8 @@
 
 # HexEngine Performance Analysis
 
-**Version:** 2.8.12  
-**Last Updated:** October 18, 2025
+**Version:** 2.8.13  
+**Last Updated:** October 19, 2025
 
 ---
 
@@ -492,4 +492,4 @@ go test ./storage/ -bench=BenchmarkLockFree -benchtime=3s
 
 *HexEngine - High-Performance Storage Engine*  
 *Performance Analysis & Benchmarks*  
-*Version 2.8.12*
+*Version 2.8.13*

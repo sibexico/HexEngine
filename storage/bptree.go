@@ -415,6 +415,18 @@ func (iter *BPTreeIterator) Next() (int64, int64, error) {
 		}
 	}
 
+	// Check if current node has keys (handle empty pages after deletions)
+	if len(iter.currentNode.keys) == 0 {
+		// Skip empty node and move to next
+		iter.currentNode = iter.currentNode.next
+		iter.currentPos = 0
+		if iter.currentNode == nil {
+			return 0, 0, fmt.Errorf("no more elements")
+		}
+		// Recursively call Next to get value from next non-empty node
+		return iter.Next()
+	}
+
 	key := iter.currentNode.keys[iter.currentPos]
 	value := iter.currentNode.values[iter.currentPos]
 	iter.currentPos++

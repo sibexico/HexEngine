@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 )
 
 // PageHeader contains metadata about the page
@@ -77,6 +78,7 @@ func (t *Tuple) IsDeleted() bool {
 
 // SlottedPage represents a page with slotted page layout
 type SlottedPage struct {
+	mu     sync.RWMutex // Protects concurrent access to page data
 	data   [PageSize]byte
 	header *PageHeader
 	slots  []SlotEntry
@@ -122,11 +124,20 @@ func (sp *SlottedPage) deserializeHeader() {
 
 // GetTupleCount returns the number of tuples in the page
 func (sp *SlottedPage) GetTupleCount() uint16 {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
 	return sp.header.TupleCount
 }
 
 // GetFreeSpaceSize returns the amount of free space in the page
 func (sp *SlottedPage) GetFreeSpaceSize() uint16 {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
+	return sp.getFreeSpaceSizeUnsafe()
+}
+
+// getFreeSpaceSizeUnsafe returns free space without locking (for internal use)
+func (sp *SlottedPage) getFreeSpaceSizeUnsafe() uint16 {
 	// Free space is between slot directory end and tuple data start
 	if sp.header.TupleDataStart <= sp.header.SlotDirEnd {
 		return 0
@@ -136,11 +147,14 @@ func (sp *SlottedPage) GetFreeSpaceSize() uint16 {
 
 // InsertTuple inserts a new tuple into the page and returns its slot ID
 func (sp *SlottedPage) InsertTuple(tuple *Tuple) (uint16, error) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
 	tupleSize := tuple.GetSize()
 	requiredSpace := tupleSize + SlotEntrySize
 
 	// Check if there's enough space
-	freeSpace := sp.GetFreeSpaceSize()
+	freeSpace := sp.getFreeSpaceSizeUnsafe()
 	if freeSpace < requiredSpace {
 		return 0, fmt.Errorf("not enough space in page: need %d, have %d", requiredSpace, freeSpace)
 	}
@@ -201,6 +215,9 @@ func (sp *SlottedPage) serializeSlots() {
 
 // ReadTuple reads a tuple from the page given its slot ID
 func (sp *SlottedPage) ReadTuple(slotId uint16) (*Tuple, error) {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
+
 	if slotId >= uint16(len(sp.slots)) {
 		return nil, fmt.Errorf("invalid slot ID %d", slotId)
 	}
@@ -210,6 +227,7 @@ func (sp *SlottedPage) ReadTuple(slotId uint16) (*Tuple, error) {
 		return nil, fmt.Errorf("slot %d is empty (tuple deleted)", slotId)
 	}
 
+	// Copy data to avoid data race on returned slice
 	tupleData := make([]byte, slot.Length)
 	copy(tupleData, sp.data[slot.Offset:slot.Offset+slot.Length])
 
@@ -218,6 +236,9 @@ func (sp *SlottedPage) ReadTuple(slotId uint16) (*Tuple, error) {
 
 // DeleteTuple marks a tuple as deleted
 func (sp *SlottedPage) DeleteTuple(slotId uint16) error {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
 	if slotId >= uint16(len(sp.slots)) {
 		return fmt.Errorf("invalid slot ID %d", slotId)
 	}
@@ -244,6 +265,9 @@ func (sp *SlottedPage) DeleteTuple(slotId uint16) error {
 
 // UpdateTuple updates an existing tuple
 func (sp *SlottedPage) UpdateTuple(slotId uint16, newTuple *Tuple) error {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
 	if slotId >= uint16(len(sp.slots)) {
 		return fmt.Errorf("invalid slot ID %d", slotId)
 	}
@@ -259,7 +283,7 @@ func (sp *SlottedPage) UpdateTuple(slotId uint16, newTuple *Tuple) error {
 	// Check if we have enough space for the larger tuple
 	if newSize > oldSize {
 		additionalSpace := newSize - oldSize
-		freeSpace := sp.GetFreeSpaceSize()
+		freeSpace := sp.getFreeSpaceSizeUnsafe()
 		if freeSpace < additionalSpace {
 			return fmt.Errorf("not enough space to update tuple: need %d more bytes, have %d",
 				additionalSpace, freeSpace)
@@ -290,6 +314,8 @@ func (sp *SlottedPage) UpdateTuple(slotId uint16, newTuple *Tuple) error {
 
 // Serialize converts the SlottedPage to a byte array
 func (sp *SlottedPage) Serialize() []byte {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
 	// The page data already contains everything we need
 	// Header is at the beginning, slots follow, then tuple data
 	result := make([]byte, PageSize)

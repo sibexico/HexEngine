@@ -2,7 +2,7 @@
 
 **A high-performance, production-ready storage engine written in Go**
 
-[![Version](https://img.shields.io/badge/version-2.8.12-blue)](https://github.com/sibexico/HexEngine/releases)
+[![Version](https://img.shields.io/badge/version-2.8.13-blue)](https://github.com/sibexico/HexEngine/releases)
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-180%2B%20Passing-brightgreen)]()
@@ -240,4 +240,4 @@ This project was developed with AI assistance. The comments, documentation, and 
 ---
 
 HexEngine - High-Performance Storage Engine  
-Version 2.8.12  
+Version 2.8.13  

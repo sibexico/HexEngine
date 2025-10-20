@@ -334,8 +334,17 @@ func (pcm *PipelineCommitManager) Shutdown() {
 }
 
 // GetStats returns current pipeline statistics
+// Returns a snapshot with atomic loads to avoid race conditions
 func (pcm *PipelineCommitManager) GetStats() PipelineStats {
-	return pcm.stats
+	var snapshot PipelineStats
+	snapshot.TotalCommits.Store(pcm.stats.TotalCommits.Load())
+	snapshot.TotalBatches.Store(pcm.stats.TotalBatches.Load())
+	snapshot.TotalFsyncs.Store(pcm.stats.TotalFsyncs.Load())
+	snapshot.ValidationTime.Store(pcm.stats.ValidationTime.Load())
+	snapshot.WriteTime.Store(pcm.stats.WriteTime.Load())
+	snapshot.FsyncTime.Store(pcm.stats.FsyncTime.Load())
+	snapshot.PipelineUtilization.Store(pcm.stats.PipelineUtilization.Load())
+	return snapshot
 }
 
 // GetAverageBatchSize returns average commits per batch
