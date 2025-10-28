@@ -119,10 +119,10 @@ func DecompressPage(cp *CompressedPage) ([]byte, error) {
 		// Snappy decompression
 		decompressed, err = snappy.Decode(nil, cp.CompressedData)
 		if err != nil {
-			return nil, fmt.Errorf("Snappy decompression failed: %w", err)
+			return nil, fmt.Errorf("snappy decompression failed: %w", err)
 		}
 		if len(decompressed) != int(cp.UncompressedSize) {
-			return nil, fmt.Errorf("Snappy decompression size mismatch: got %d, expected %d", len(decompressed), cp.UncompressedSize)
+			return nil, fmt.Errorf("snappy decompression size mismatch: got %d, expected %d", len(decompressed), cp.UncompressedSize)
 		}
 
 	default:

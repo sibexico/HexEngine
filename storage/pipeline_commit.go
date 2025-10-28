@@ -73,6 +73,17 @@ type PipelineStats struct {
 	PipelineUtilization atomic.Int64  // Percentage of time with work in flight
 }
 
+// PipelineStatsSnapshot is a plain-value snapshot of pipeline statistics
+type PipelineStatsSnapshot struct {
+	TotalCommits        uint64 // Total commits processed
+	TotalBatches        uint64 // Total batches processed
+	TotalFsyncs         uint64 // Total fsync operations
+	ValidationTime      int64  // Total time in validation (ns)
+	WriteTime           int64  // Total time in write (ns)
+	FsyncTime           int64  // Total time in fsync (ns)
+	PipelineUtilization int64  // Percentage of time with work in flight
+}
+
 // NewPipelineCommitManager creates a new pipelined commit manager
 func NewPipelineCommitManager(logManager *LogManager, txnManager *TransactionManager, maxBatchSize int, maxBatchDelay time.Duration) *PipelineCommitManager {
 	if maxBatchSize <= 0 {
@@ -335,16 +346,16 @@ func (pcm *PipelineCommitManager) Shutdown() {
 
 // GetStats returns current pipeline statistics
 // Returns a snapshot with atomic loads to avoid race conditions
-func (pcm *PipelineCommitManager) GetStats() PipelineStats {
-	var snapshot PipelineStats
-	snapshot.TotalCommits.Store(pcm.stats.TotalCommits.Load())
-	snapshot.TotalBatches.Store(pcm.stats.TotalBatches.Load())
-	snapshot.TotalFsyncs.Store(pcm.stats.TotalFsyncs.Load())
-	snapshot.ValidationTime.Store(pcm.stats.ValidationTime.Load())
-	snapshot.WriteTime.Store(pcm.stats.WriteTime.Load())
-	snapshot.FsyncTime.Store(pcm.stats.FsyncTime.Load())
-	snapshot.PipelineUtilization.Store(pcm.stats.PipelineUtilization.Load())
-	return snapshot
+func (pcm *PipelineCommitManager) GetStats() PipelineStatsSnapshot {
+	return PipelineStatsSnapshot{
+		TotalCommits:        pcm.stats.TotalCommits.Load(),
+		TotalBatches:        pcm.stats.TotalBatches.Load(),
+		TotalFsyncs:         pcm.stats.TotalFsyncs.Load(),
+		ValidationTime:      pcm.stats.ValidationTime.Load(),
+		WriteTime:           pcm.stats.WriteTime.Load(),
+		FsyncTime:           pcm.stats.FsyncTime.Load(),
+		PipelineUtilization: pcm.stats.PipelineUtilization.Load(),
+	}
 }
 
 // GetAverageBatchSize returns average commits per batch

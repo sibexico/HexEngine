@@ -11,14 +11,14 @@ import (
 
 // MmapDiskManager provides zero-copy disk access using memory-mapped files
 type MmapDiskManager struct {
-	file *os.File
-	fileHandle windows.Handle
+	file          *os.File
+	fileHandle    windows.Handle
 	mappingHandle windows.Handle
-	mmapData []byte
-	fileSize int64
-	nextPageId uint32
-	mutex sync.RWMutex
-	growMutex sync.Mutex // Separate mutex for file growth operations
+	mmapData      []byte
+	fileSize      int64
+	nextPageId    uint32
+	mutex         sync.RWMutex
+	growMutex     sync.Mutex // Separate mutex for file growth operations
 }
 
 const (
@@ -55,8 +55,8 @@ func NewMmapDiskManager(fileName string) (*MmapDiskManager, error) {
 	}
 
 	dm := &MmapDiskManager{
-		file: file,
-		fileSize: fileSize,
+		file:       file,
+		fileSize:   fileSize,
 		nextPageId: 0,
 	}
 
@@ -109,7 +109,8 @@ func (dm *MmapDiskManager) createMapping() error {
 	}
 
 	// Create byte slice backed by mmap memory
-	dm.mmapData = unsafe.Slice((*byte)(unsafe.Pointer(addr)), dm.fileSize)
+	// Use intermediate uintptr conversion to satisfy unsafe pointer rules
+	dm.mmapData = unsafe.Slice((*byte)(unsafe.Pointer(uintptr(addr))), dm.fileSize)
 
 	return nil
 }
@@ -345,11 +346,11 @@ func (dm *MmapDiskManager) Advise(pageId uint32, advice AdviceType) error {
 type AdviceType int
 
 const (
-	AdviceNormal AdviceType = 0 // No special treatment
-	AdviceRandom AdviceType = 1 // Random access pattern
+	AdviceNormal     AdviceType = 0 // No special treatment
+	AdviceRandom     AdviceType = 1 // Random access pattern
 	AdviceSequential AdviceType = 2 // Sequential access pattern
-	AdviceWillNeed AdviceType = 3 // Will need these pages soon (prefetch)
-	AdviceDontNeed AdviceType = 4 // Won't need these pages (can evict)
+	AdviceWillNeed   AdviceType = 3 // Will need these pages soon (prefetch)
+	AdviceDontNeed   AdviceType = 4 // Won't need these pages (can evict)
 )
 
 // GetFileSize returns the current file size
@@ -399,12 +400,12 @@ func (dm *MmapDiskManager) Close() error {
 
 // Stats returns statistics about the mmap disk manager
 type MmapStats struct {
-	FileSize int64
-	MappedSize int64
-	NextPageId uint32
-	UsedPages uint32
+	FileSize    int64
+	MappedSize  int64
+	NextPageId  uint32
+	UsedPages   uint32
 	AllocatedMB int64
-	UsedMB int64
+	UsedMB      int64
 }
 
 func (dm *MmapDiskManager) GetStats() MmapStats {
@@ -412,11 +413,11 @@ func (dm *MmapDiskManager) GetStats() MmapStats {
 	defer dm.mutex.RUnlock()
 
 	return MmapStats{
-		FileSize: dm.fileSize,
-		MappedSize: int64(len(dm.mmapData)),
-		NextPageId: dm.nextPageId,
-		UsedPages: dm.nextPageId,
+		FileSize:    dm.fileSize,
+		MappedSize:  int64(len(dm.mmapData)),
+		NextPageId:  dm.nextPageId,
+		UsedPages:   dm.nextPageId,
 		AllocatedMB: dm.fileSize / (1024 * 1024),
-		UsedMB: int64(dm.nextPageId) * PageSize / (1024 * 1024),
+		UsedMB:      int64(dm.nextPageId) * PageSize / (1024 * 1024),
 	}
 }

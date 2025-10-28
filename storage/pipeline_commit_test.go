@@ -59,7 +59,7 @@ func TestPipelineCommitBasic(t *testing.T) {
 	// Simulate some work
 	record := &LogRecord{
 		TxnID: txn.TxnID,
-		Type: LogUpdate,
+		Type:  LogUpdate,
 	}
 	lsn, err := pcm.logManager.AppendLog(record)
 	if err != nil {
@@ -74,10 +74,10 @@ func TestPipelineCommitBasic(t *testing.T) {
 
 	// Verify stats
 	stats := pcm.GetStats()
-	if stats.TotalCommits.Load() != 1 {
-		t.Errorf("Expected 1 commit, got %d", stats.TotalCommits.Load())
+	if stats.TotalCommits != 1 {
+		t.Errorf("Expected 1 commit, got %d", stats.TotalCommits)
 	}
-	if stats.TotalFsyncs.Load() == 0 {
+	if stats.TotalFsyncs == 0 {
 		t.Errorf("Expected at least 1 fsync")
 	}
 }
@@ -96,7 +96,7 @@ func TestPipelineBatching(t *testing.T) {
 		txns[i], _ = tm.Begin()
 		record := &LogRecord{
 			TxnID: txns[i].TxnID,
-			Type: LogUpdate,
+			Type:  LogUpdate,
 		}
 		lsn, err := pcm.logManager.AppendLog(record)
 		if err != nil {
@@ -136,16 +136,16 @@ func TestPipelineBatching(t *testing.T) {
 	avgBatchSize := pcm.GetAverageBatchSize()
 
 	t.Logf("Batching test: %d commits, %d batches, avg batch size %.2f, %d fsyncs",
-		stats.TotalCommits.Load(), stats.TotalBatches.Load(), avgBatchSize, stats.TotalFsyncs.Load())
+		stats.TotalCommits, stats.TotalBatches, avgBatchSize, stats.TotalFsyncs)
 
-	if stats.TotalCommits.Load() != uint64(numTxns) {
-		t.Errorf("Expected %d commits, got %d", numTxns, stats.TotalCommits.Load())
+	if stats.TotalCommits != uint64(numTxns) {
+		t.Errorf("Expected %d commits, got %d", numTxns, stats.TotalCommits)
 	}
 
 	// Should have fewer batches than commits (due to batching)
-	if stats.TotalBatches.Load() >= uint64(numTxns) {
+	if stats.TotalBatches >= uint64(numTxns) {
 		t.Errorf("Expected fewer batches than commits, got %d batches for %d commits",
-			stats.TotalBatches.Load(), numTxns)
+			stats.TotalBatches, numTxns)
 	}
 
 	// Average batch size should be > 1
@@ -163,7 +163,7 @@ func TestPipelineTimeout(t *testing.T) {
 	txn, _ := tm.Begin()
 	record := &LogRecord{
 		TxnID: txn.TxnID,
-		Type: LogUpdate,
+		Type:  LogUpdate,
 	}
 	lsn, _ := pcm.logManager.AppendLog(record)
 
@@ -184,8 +184,8 @@ func TestPipelineTimeout(t *testing.T) {
 
 	// Verify it was committed
 	stats := pcm.GetStats()
-	if stats.TotalCommits.Load() != 1 {
-		t.Errorf("Expected 1 commit, got %d", stats.TotalCommits.Load())
+	if stats.TotalCommits != 1 {
+		t.Errorf("Expected 1 commit, got %d", stats.TotalCommits)
 	}
 }
 
@@ -210,7 +210,7 @@ func TestPipelineConcurrent(t *testing.T) {
 				txn, _ := tm.Begin()
 				record := &LogRecord{
 					TxnID: txn.TxnID,
-					Type: LogUpdate,
+					Type:  LogUpdate,
 				}
 				lsn, err := pcm.logManager.AppendLog(record)
 				if err != nil {
@@ -238,11 +238,11 @@ func TestPipelineConcurrent(t *testing.T) {
 
 	expectedCommits := numWorkers * commitsPerWorker
 	stats := pcm.GetStats()
-	actualCommits := stats.TotalCommits.Load()
+	actualCommits := stats.TotalCommits
 
 	t.Logf("Concurrent test: %d workers × %d commits = %d total, %d batches, avg batch size %.2f, %d fsyncs",
-		numWorkers, commitsPerWorker, actualCommits, stats.TotalBatches.Load(),
-		pcm.GetAverageBatchSize(), stats.TotalFsyncs.Load())
+		numWorkers, commitsPerWorker, actualCommits, stats.TotalBatches,
+		pcm.GetAverageBatchSize(), stats.TotalFsyncs)
 
 	// Verify commit count (allowing for some errors)
 	if actualCommits != uint64(expectedCommits-errorCount) {
@@ -260,7 +260,7 @@ func TestPipelineShutdown(t *testing.T) {
 	txn, _ := tm.Begin()
 	record := &LogRecord{
 		TxnID: txn.TxnID,
-		Type: LogUpdate,
+		Type:  LogUpdate,
 	}
 	lsn, _ := pcm.logManager.AppendLog(record)
 
@@ -276,7 +276,7 @@ func TestPipelineShutdown(t *testing.T) {
 	txn2, _ := tm.Begin()
 	record2 := &LogRecord{
 		TxnID: txn2.TxnID,
-		Type: LogUpdate,
+		Type:  LogUpdate,
 	}
 	lsn2, _ := pcm.logManager.AppendLog(record2)
 
@@ -297,7 +297,7 @@ func TestPipelineStats(t *testing.T) {
 		txn, _ := tm.Begin()
 		record := &LogRecord{
 			TxnID: txn.TxnID,
-			Type: LogUpdate,
+			Type:  LogUpdate,
 		}
 		lsn, _ := pcm.logManager.AppendLog(record)
 		err := pcm.Commit(txn.TxnID, lsn)
@@ -319,9 +319,9 @@ func TestPipelineStats(t *testing.T) {
 	efficiency := pcm.GetPipelineEfficiency()
 
 	t.Logf("Pipeline stats:")
-	t.Logf(" Commits: %d", stats.TotalCommits.Load())
-	t.Logf(" Batches: %d", stats.TotalBatches.Load())
-	t.Logf(" Fsyncs: %d", stats.TotalFsyncs.Load())
+	t.Logf(" Commits: %d", stats.TotalCommits)
+	t.Logf(" Batches: %d", stats.TotalBatches)
+	t.Logf(" Fsyncs: %d", stats.TotalFsyncs)
 	t.Logf(" Avg batch size: %.2f", avgBatch)
 	t.Logf(" Avg validation time: %d ns", avgValidation)
 	t.Logf(" Avg write time: %d ns", avgWrite)
@@ -330,8 +330,8 @@ func TestPipelineStats(t *testing.T) {
 	t.Logf(" Pipeline efficiency: %.2f%%", efficiency*100)
 
 	// Verify reasonable values
-	if stats.TotalCommits.Load() != uint64(numCommits) {
-		t.Errorf("Expected %d commits, got %d", numCommits, stats.TotalCommits.Load())
+	if stats.TotalCommits != uint64(numCommits) {
+		t.Errorf("Expected %d commits, got %d", numCommits, stats.TotalCommits)
 	}
 
 	if avgFsync <= 0 {
@@ -363,7 +363,7 @@ func TestPipelineStageOverlap(t *testing.T) {
 				txn, _ := tm.Begin()
 				record := &LogRecord{
 					TxnID: txn.TxnID,
-					Type: LogUpdate,
+					Type:  LogUpdate,
 				}
 				lsn, _ := pcm.logManager.AppendLog(record)
 				_ = pcm.Commit(txn.TxnID, lsn)
@@ -383,8 +383,8 @@ func TestPipelineStageOverlap(t *testing.T) {
 	efficiency := pcm.GetPipelineEfficiency()
 
 	t.Logf("Overlap test: %d waves × %d txns = %d total",
-		numWaves, txnsPerWave, stats.TotalCommits.Load())
-	t.Logf(" Batches: %d", stats.TotalBatches.Load())
+		numWaves, txnsPerWave, stats.TotalCommits)
+	t.Logf(" Batches: %d", stats.TotalBatches)
 	t.Logf(" Avg batch: %.2f", pcm.GetAverageBatchSize())
 	t.Logf(" Pipeline efficiency: %.2f%%", efficiency*100)
 
@@ -406,7 +406,7 @@ func BenchmarkPipelineCommit(b *testing.B) {
 		txn, _ := tm.Begin()
 		record := &LogRecord{
 			TxnID: txn.TxnID,
-			Type: LogUpdate,
+			Type:  LogUpdate,
 		}
 		lsn, _ := pcm.logManager.AppendLog(record)
 		_ = pcm.Commit(txn.TxnID, lsn)
@@ -415,7 +415,7 @@ func BenchmarkPipelineCommit(b *testing.B) {
 	b.StopTimer()
 
 	stats := pcm.GetStats()
-	b.ReportMetric(float64(stats.TotalCommits.Load())/b.Elapsed().Seconds(), "commits/sec")
+	b.ReportMetric(float64(stats.TotalCommits)/b.Elapsed().Seconds(), "commits/sec")
 	b.ReportMetric(pcm.GetAverageBatchSize(), "avg_batch_size")
 	b.ReportMetric(float64(pcm.GetAverageFsyncTime())/1000000, "avg_fsync_ms")
 }
@@ -441,7 +441,7 @@ func BenchmarkPipelineVsGroup(b *testing.B) {
 			txn, _ := tm.Begin()
 			record := &LogRecord{
 				TxnID: txn.TxnID,
-				Type: LogUpdate,
+				Type:  LogUpdate,
 			}
 			lsn, _ := lm.AppendLog(record)
 			_ = gcm.Commit(lsn)
@@ -458,7 +458,7 @@ func BenchmarkPipelineVsGroup(b *testing.B) {
 			txn, _ := tm.Begin()
 			record := &LogRecord{
 				TxnID: txn.TxnID,
-				Type: LogUpdate,
+				Type:  LogUpdate,
 			}
 			lsn, _ := pcm.logManager.AppendLog(record)
 			_ = pcm.Commit(txn.TxnID, lsn)
@@ -477,7 +477,7 @@ func BenchmarkPipelineConcurrent(b *testing.B) {
 			txn, _ := tm.Begin()
 			record := &LogRecord{
 				TxnID: txn.TxnID,
-				Type: LogUpdate,
+				Type:  LogUpdate,
 			}
 			lsn, _ := pcm.logManager.AppendLog(record)
 			_ = pcm.Commit(txn.TxnID, lsn)
@@ -487,7 +487,7 @@ func BenchmarkPipelineConcurrent(b *testing.B) {
 	b.StopTimer()
 
 	stats := pcm.GetStats()
-	b.ReportMetric(float64(stats.TotalCommits.Load())/b.Elapsed().Seconds(), "commits/sec")
+	b.ReportMetric(float64(stats.TotalCommits)/b.Elapsed().Seconds(), "commits/sec")
 	b.ReportMetric(pcm.GetAverageBatchSize(), "avg_batch_size")
 	b.ReportMetric(pcm.GetPipelineEfficiency()*100, "pipeline_efficiency_%")
 }

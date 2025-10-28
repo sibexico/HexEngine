@@ -492,4 +492,6 @@ go test ./storage/ -bench=BenchmarkLockFree -benchtime=3s
 
 *HexEngine - High-Performance Storage Engine*  
 *Performance Analysis & Benchmarks*  
-*Version 2.8.13*
+---
+
+*Version 2.9.0*

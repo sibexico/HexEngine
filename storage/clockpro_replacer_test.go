@@ -328,9 +328,9 @@ func TestClockProWorkloadMix(t *testing.T) {
 	}
 
 	// Random accesses
-	rand.Seed(42)
+	rng := rand.New(rand.NewSource(42))
 	for i := 0; i < 100; i++ {
-		pageID := uint32(rand.Intn(100)) + 1
+		pageID := uint32(rng.Intn(100)) + 1
 		cp.Unpin(pageID)
 		if i%3 == 0 {
 			cp.Victim()
@@ -360,12 +360,12 @@ func TestClockProStressTest(t *testing.T) {
 	}
 
 	cp := NewClockProReplacer(100)
-	rand.Seed(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	operations := 10000
 	for i := 0; i < operations; i++ {
-		op := rand.Intn(4)
-		pageID := uint32(rand.Intn(200)) + 1
+		op := rng.Intn(4)
+		pageID := uint32(rng.Intn(200)) + 1
 
 		switch op {
 		case 0: // Unpin
@@ -469,16 +469,16 @@ func BenchmarkClockProMixedWorkload(b *testing.B) {
 func BenchmarkCompareReplacers(b *testing.B) {
 	capacity := 1000
 	accessPattern := make([]uint32, 10000)
-	rand.Seed(42)
+	rng := rand.New(rand.NewSource(42))
 
 	// Generate a realistic access pattern with locality
 	for i := range accessPattern {
-		if rand.Float64() < 0.7 {
+		if rng.Float64() < 0.7 {
 			// 70% working set (0-99)
-			accessPattern[i] = uint32(rand.Intn(100))
+			accessPattern[i] = uint32(rng.Intn(100))
 		} else {
 			// 30% random (100-999)
-			accessPattern[i] = uint32(rand.Intn(900)) + 100
+			accessPattern[i] = uint32(rng.Intn(900)) + 100
 		}
 	}
 

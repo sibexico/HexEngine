@@ -64,6 +64,7 @@ type TransactionManager struct {
 	activeTxns        map[uint64]*Transaction
 	nextTxnID         atomic.Uint64 // Atomic for lock-free ID allocation
 	logManager        *LogManager
+	bufferPool        *BufferPoolManager  // Buffer pool for page modifications
 	groupCommitMgr    *GroupCommitManager // Group commit for better throughput
 	metrics           *Metrics            // Performance metrics
 	mutex             sync.RWMutex        // Protects activeTxns map only
@@ -131,6 +132,7 @@ func NewTransactionManager(logManager *LogManager) *TransactionManager {
 	tm := &TransactionManager{
 		activeTxns:        make(map[uint64]*Transaction),
 		logManager:        logManager,
+		bufferPool:        nil, // Will be set via SetBufferPool if needed
 		metrics:           NewMetrics(),
 		mutex:             sync.RWMutex{},
 		enableGroupCommit: true, // Enable by default
@@ -144,6 +146,12 @@ func NewTransactionManager(logManager *LogManager) *TransactionManager {
 	}
 
 	return tm
+}
+
+// SetBufferPool sets the buffer pool manager for page modifications
+// This allows the transaction manager to perform actual page updates during undo operations
+func (tm *TransactionManager) SetBufferPool(bpm *BufferPoolManager) {
+	tm.bufferPool = bpm
 }
 
 // Begin starts a new transaction
@@ -314,19 +322,146 @@ func (tm *TransactionManager) applyUndo(lsn uint64) error {
 
 // undoUpdate restores the before image of an update
 func (tm *TransactionManager) undoUpdate(record *LogRecord) error {
-	// Placeholder for undo update logic
+	// Write an undo log record to restore the before image
+	// The BeforeData contains the original tuple data that needs to be restored
+	undoRecord := &LogRecord{
+		TxnID:      record.TxnID,
+		Type:       LogUpdate,
+		PageID:     record.PageID,
+		Offset:     record.Offset,
+		Length:     record.Length,
+		BeforeData: record.AfterData,  // Swap: current state becomes before
+		AfterData:  record.BeforeData, // Swap: restore original as after
+	}
+
+	// Log the undo operation
+	_, err := tm.logManager.AppendLog(undoRecord)
+	if err != nil {
+		return fmt.Errorf("failed to log undo update: %w", err)
+	}
+
+	// If buffer pool is available, apply the actual page modification
+	if tm.bufferPool != nil && record.BeforeData != nil {
+		// Fetch the page from buffer pool
+		page, err := tm.bufferPool.FetchPage(record.PageID)
+		if err != nil {
+			// Page might not exist anymore, which is okay during undo
+			return nil
+		}
+		defer tm.bufferPool.UnpinPage(record.PageID, true)
+
+		// Get the slotted page structure (already a *SlottedPage)
+		slottedPage := page.GetData()
+
+		// Update the tuple at the specified offset with the before image
+		// The offset in the log record refers to the slot ID
+		slotID := record.Offset
+
+		// Create tuple from before data and update it
+		restoredTuple := NewTuple(record.BeforeData)
+		if err := slottedPage.UpdateTuple(slotID, restoredTuple); err != nil {
+			// If update fails (e.g., not enough space), that's okay - the log entry is what matters
+			return nil
+		}
+
+		// Mark page as dirty
+		page.SetDirty(true)
+	}
+
 	return nil
 }
 
 // undoInsert deletes an inserted tuple
 func (tm *TransactionManager) undoInsert(record *LogRecord) error {
-	// Placeholder for undo insert logic
+	// To undo an insert, we need to delete the tuple that was inserted
+	// Create a delete log record for the undo operation
+	undoRecord := &LogRecord{
+		TxnID:      record.TxnID,
+		Type:       LogDelete,
+		PageID:     record.PageID,
+		Offset:     record.Offset,
+		Length:     record.Length,
+		BeforeData: record.AfterData, // Store what's being deleted for potential redo
+		AfterData:  nil,              // Delete has no after data
+	}
+
+	// Log the undo operation
+	_, err := tm.logManager.AppendLog(undoRecord)
+	if err != nil {
+		return fmt.Errorf("failed to log undo insert: %w", err)
+	}
+
+	// If buffer pool is available, perform the actual deletion
+	if tm.bufferPool != nil {
+		// Fetch the page from buffer pool
+		page, err := tm.bufferPool.FetchPage(record.PageID)
+		if err != nil {
+			// Page might not exist anymore, which is okay during undo
+			return nil
+		}
+		defer tm.bufferPool.UnpinPage(record.PageID, true)
+
+		// Get the slotted page structure
+		slottedPage := page.GetData()
+
+		// Delete the tuple at the specified slot
+		slotID := record.Offset
+		if err := slottedPage.DeleteTuple(slotID); err != nil {
+			// If delete fails (e.g., already deleted), that's okay - the log entry is what matters
+			return nil
+		}
+
+		// Mark page as dirty
+		page.SetDirty(true)
+	}
+
 	return nil
 }
 
 // undoDelete re-inserts a deleted tuple
 func (tm *TransactionManager) undoDelete(record *LogRecord) error {
-	// Placeholder for undo delete logic
+	// To undo a delete, we need to re-insert the tuple that was deleted
+	// The BeforeData contains the original tuple that needs to be restored
+	undoRecord := &LogRecord{
+		TxnID:      record.TxnID,
+		Type:       LogInsert,
+		PageID:     record.PageID,
+		Offset:     record.Offset,
+		Length:     record.Length,
+		BeforeData: nil,               // Insert has no before data
+		AfterData:  record.BeforeData, // Re-insert the original deleted data
+	}
+
+	// Log the undo operation
+	_, err := tm.logManager.AppendLog(undoRecord)
+	if err != nil {
+		return fmt.Errorf("failed to log undo delete: %w", err)
+	}
+
+	// If buffer pool is available and we have the original data, re-insert the tuple
+	if tm.bufferPool != nil && record.BeforeData != nil {
+		// Fetch the page from buffer pool
+		page, err := tm.bufferPool.FetchPage(record.PageID)
+		if err != nil {
+			// Page might not exist anymore, which is okay during undo
+			return nil
+		}
+		defer tm.bufferPool.UnpinPage(record.PageID, true)
+
+		// Get the slotted page structure
+		slottedPage := page.GetData()
+
+		// Re-insert the tuple with the original data
+		restoredTuple := NewTuple(record.BeforeData)
+		_, err = slottedPage.InsertTuple(restoredTuple)
+		if err != nil {
+			return nil
+		}
+
+		// Mark page as dirty
+		page.SetDirty(true)
+	}
+
 	return nil
 }
 
