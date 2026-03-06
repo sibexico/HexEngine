@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -9,7 +10,7 @@ import (
 // TestBloomFilterBasic tests basic insert and lookup operations
 func TestBloomFilterBasic(t *testing.T) {
 	config := BloomFilterConfig{
-		ExpectedElements: 100,
+		ExpectedElements:  100,
 		FalsePositiveRate: 0.01,
 	}
 	bf := NewBloomFilter(config)
@@ -42,7 +43,7 @@ func TestBloomFilterBasic(t *testing.T) {
 // TestBloomFilterFalsePositiveRate tests the false positive rate
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	config := BloomFilterConfig{
-		ExpectedElements: 1000,
+		ExpectedElements:  1000,
 		FalsePositiveRate: 0.01, // 1% target
 	}
 	bf := NewBloomFilter(config)
@@ -132,6 +133,47 @@ func TestBloomFilterSerialization(t *testing.T) {
 	if bf.GetNumHashes() != bf2.GetNumHashes() {
 		t.Errorf("NumHashes mismatch: %d vs %d", bf.GetNumHashes(), bf2.GetNumHashes())
 	}
+}
+
+func TestBloomFilterDeserializeValidation(t *testing.T) {
+	t.Run("TooShort", func(t *testing.T) {
+		if _, err := DeserializeBloomFilter([]byte{1, 2, 3}); err == nil {
+			t.Fatal("expected error for short bloom filter payload")
+		}
+	})
+
+	t.Run("ZeroBits", func(t *testing.T) {
+		data := make([]byte, 12)
+		binary.LittleEndian.PutUint32(data[0:4], 0)
+		binary.LittleEndian.PutUint32(data[4:8], 1)
+		binary.LittleEndian.PutUint32(data[8:12], 0)
+
+		if _, err := DeserializeBloomFilter(data); err == nil {
+			t.Fatal("expected error when numBits is zero")
+		}
+	})
+
+	t.Run("ZeroHashes", func(t *testing.T) {
+		data := make([]byte, 13)
+		binary.LittleEndian.PutUint32(data[0:4], 8)
+		binary.LittleEndian.PutUint32(data[4:8], 0)
+		binary.LittleEndian.PutUint32(data[8:12], 0)
+
+		if _, err := DeserializeBloomFilter(data); err == nil {
+			t.Fatal("expected error when numHashes is zero")
+		}
+	})
+
+	t.Run("OversizedBitset", func(t *testing.T) {
+		data := make([]byte, 12)
+		binary.LittleEndian.PutUint32(data[0:4], (maxBloomFilterBytes+1)*8)
+		binary.LittleEndian.PutUint32(data[4:8], 1)
+		binary.LittleEndian.PutUint32(data[8:12], 0)
+
+		if _, err := DeserializeBloomFilter(data); err == nil {
+			t.Fatal("expected error for oversized bloom filter payload")
+		}
+	})
 }
 
 // TestBloomFilterClear tests clearing the filter
@@ -270,7 +312,7 @@ func TestBloomFilterClone(t *testing.T) {
 // TestBloomFilterStats tests statistics calculation
 func TestBloomFilterStats(t *testing.T) {
 	config := BloomFilterConfig{
-		ExpectedElements: 100,
+		ExpectedElements:  100,
 		FalsePositiveRate: 0.01,
 	}
 	bf := NewBloomFilter(config)
@@ -358,7 +400,7 @@ func TestPageBloomFilter(t *testing.T) {
 // TestBloomFilterCapacity tests behavior at capacity
 func TestBloomFilterCapacity(t *testing.T) {
 	config := BloomFilterConfig{
-		ExpectedElements: 50,
+		ExpectedElements:  50,
 		FalsePositiveRate: 0.01,
 	}
 	bf := NewBloomFilter(config)

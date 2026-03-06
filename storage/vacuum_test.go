@@ -286,6 +286,37 @@ func TestAutoVacuum(t *testing.T) {
 	}
 }
 
+func TestAutoVacuumStopIdempotent(t *testing.T) {
+	testFileName := "test_auto_vacuum_idempotent.db"
+	defer os.Remove(testFileName)
+
+	dm, err := NewDiskManager(testFileName)
+	if err != nil {
+		t.Fatalf("Failed to create DiskManager: %v", err)
+	}
+	defer dm.Close()
+
+	bpm, err := NewBufferPoolManager(10, dm)
+	if err != nil {
+		t.Fatalf("Failed to create BufferPoolManager: %v", err)
+	}
+
+	lm, err := NewLogManager("test_auto_vacuum_idempotent.log")
+	if err != nil {
+		t.Fatalf("Failed to create LogManager: %v", err)
+	}
+	defer os.Remove("test_auto_vacuum_idempotent.log")
+
+	txnMgr := NewTransactionManager(lm)
+	vm := NewVacuumManager(bpm, txnMgr)
+
+	vm.StartAutoVacuum(50 * time.Millisecond)
+	time.Sleep(120 * time.Millisecond)
+
+	vm.StopAutoVacuum()
+	vm.StopAutoVacuum()
+}
+
 func TestVacuumStats(t *testing.T) {
 	testFileName := "test_vacuum_stats.db"
 	defer os.Remove(testFileName)

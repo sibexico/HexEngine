@@ -14,7 +14,9 @@ type VacuumManager struct {
 	mutex          sync.RWMutex
 	running        bool
 	stopCh         chan struct{}
+	stopOnce       sync.Once
 	wg             sync.WaitGroup
+	lastError      error
 
 	// Statistics
 	totalScanned   uint64
@@ -30,6 +32,7 @@ type VacuumStats struct {
 	TotalRuns      uint64
 	LastRunTime    time.Time
 	IsRunning      bool
+	LastError      string
 }
 
 // NewVacuumManager creates a new vacuum manager
@@ -189,7 +192,11 @@ func (vm *VacuumManager) StartAutoVacuum(interval time.Duration) {
 			select {
 			case <-ticker.C:
 				// Run vacuum
-				_, _ = vm.VacuumAll()
+				if _, err := vm.VacuumAll(); err != nil {
+					vm.mutex.Lock()
+					vm.lastError = err
+					vm.mutex.Unlock()
+				}
 			case <-vm.stopCh:
 				return
 			}
@@ -199,7 +206,9 @@ func (vm *VacuumManager) StartAutoVacuum(interval time.Duration) {
 
 // StopAutoVacuum stops the automatic vacuum process
 func (vm *VacuumManager) StopAutoVacuum() {
-	close(vm.stopCh)
+	vm.stopOnce.Do(func() {
+		close(vm.stopCh)
+	})
 	vm.wg.Wait()
 }
 
@@ -214,7 +223,15 @@ func (vm *VacuumManager) GetStats() VacuumStats {
 		TotalRuns:      vm.totalRuns,
 		LastRunTime:    vm.lastRunTime,
 		IsRunning:      vm.running,
+		LastError:      vacuumErrorString(vm.lastError),
 	}
+}
+
+func vacuumErrorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // ResetStats resets all vacuum statistics
@@ -226,4 +243,5 @@ func (vm *VacuumManager) ResetStats() {
 	vm.totalReclaimed = 0
 	vm.totalRuns = 0
 	vm.lastRunTime = time.Time{}
+	vm.lastError = nil
 }

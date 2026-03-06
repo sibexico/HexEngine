@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -108,9 +109,15 @@ func (dm *MmapDiskManager) createMapping() error {
 		return fmt.Errorf("failed to map view of file: %w", err)
 	}
 
+	if dm.fileSize > int64(^uint(0)>>1) {
+		windows.UnmapViewOfFile(addr)
+		windows.CloseHandle(mappingHandle)
+		return fmt.Errorf("file size %d exceeds addressable slice size", dm.fileSize)
+	}
+
 	// Create byte slice backed by mmap memory
-	// Use intermediate uintptr conversion to satisfy unsafe pointer rules
-	dm.mmapData = unsafe.Slice((*byte)(unsafe.Pointer(uintptr(addr))), dm.fileSize)
+	basePtr := unsafe.Add(unsafe.Pointer((*byte)(nil)), addr)
+	dm.mmapData = unsafe.Slice((*byte)(basePtr), int(dm.fileSize))
 
 	return nil
 }
@@ -125,10 +132,7 @@ func (dm *MmapDiskManager) AllocatePage() (uint32, error) {
 	// Check if we need to grow the file
 	requiredSize := int64(pageId+1) * PageSize
 	if requiredSize > dm.fileSize {
-		dm.mutex.Unlock()
-		err := dm.growFile()
-		dm.mutex.Lock()
-		if err != nil {
+		if err := dm.growFile(); err != nil {
 			return 0, err
 		}
 	}
@@ -369,14 +373,18 @@ func (dm *MmapDiskManager) GetNextPageId() uint32 {
 
 // Close unmaps memory and closes the file
 func (dm *MmapDiskManager) Close() error {
+	var closeErr error
+
 	// Flush before closing
-	dm.Flush()
+	if err := dm.Flush(); err != nil {
+		closeErr = errors.Join(closeErr, fmt.Errorf("failed to flush before close: %w", err))
+	}
 
 	// Unmap memory
 	if dm.mmapData != nil {
 		err := windows.UnmapViewOfFile(uintptr(unsafe.Pointer(&dm.mmapData[0])))
 		if err != nil {
-			return fmt.Errorf("failed to unmap view: %w", err)
+			closeErr = errors.Join(closeErr, fmt.Errorf("failed to unmap view: %w", err))
 		}
 		dm.mmapData = nil
 	}
@@ -385,17 +393,19 @@ func (dm *MmapDiskManager) Close() error {
 	if dm.mappingHandle != 0 {
 		err := windows.CloseHandle(dm.mappingHandle)
 		if err != nil {
-			return fmt.Errorf("failed to close mapping handle: %w", err)
+			closeErr = errors.Join(closeErr, fmt.Errorf("failed to close mapping handle: %w", err))
 		}
 		dm.mappingHandle = 0
 	}
 
 	// Close file
 	if dm.file != nil {
-		return dm.file.Close()
+		if err := dm.file.Close(); err != nil {
+			closeErr = errors.Join(closeErr, fmt.Errorf("failed to close file: %w", err))
+		}
 	}
 
-	return nil
+	return closeErr
 }
 
 // Stats returns statistics about the mmap disk manager

@@ -7,18 +7,20 @@ import (
 	"math"
 )
 
+const maxBloomFilterBytes = 16 * 1024 * 1024
+
 // BloomFilter is a space-efficient probabilistic data structure for membership testing
 // Used at page level to quickly reject negative lookups without reading page data
 type BloomFilter struct {
-	bits []byte // Bit array (packed into bytes)
-	numBits uint32 // Total number of bits
-	numHashes uint32 // Number of hash functions to use
+	bits       []byte // Bit array (packed into bytes)
+	numBits    uint32 // Total number of bits
+	numHashes  uint32 // Number of hash functions to use
 	numInserts uint32 // Number of elements inserted (for statistics)
 }
 
 // BloomFilterConfig holds configuration for creating a Bloom filter
 type BloomFilterConfig struct {
-	ExpectedElements uint32 // Expected number of elements to insert
+	ExpectedElements  uint32  // Expected number of elements to insert
 	FalsePositiveRate float64 // Target false positive rate (e.g., 0.01 = 1%)
 }
 
@@ -26,7 +28,7 @@ type BloomFilterConfig struct {
 // Assumes ~100 keys per page with 1% false positive rate
 func DefaultBloomFilterConfig() BloomFilterConfig {
 	return BloomFilterConfig{
-		ExpectedElements: 100,
+		ExpectedElements:  100,
 		FalsePositiveRate: 0.01,
 	}
 }
@@ -52,8 +54,8 @@ func NewBloomFilter(config BloomFilterConfig) *BloomFilter {
 	numBytes := (numBits + 7) / 8
 
 	return &BloomFilter{
-		bits: make([]byte, numBytes),
-		numBits: numBits,
+		bits:      make([]byte, numBytes),
+		numBits:   numBits,
 		numHashes: numHashes,
 	}
 }
@@ -67,8 +69,8 @@ func NewBloomFilterFromBytes(data []byte, numHashes uint32) *BloomFilter {
 	numBits := uint32(len(data)) * 8
 
 	return &BloomFilter{
-		bits: data,
-		numBits: numBits,
+		bits:      data,
+		numBits:   numBits,
 		numHashes: numHashes,
 	}
 }
@@ -234,18 +236,30 @@ func DeserializeBloomFilter(data []byte) (*BloomFilter, error) {
 	numHashes := binary.LittleEndian.Uint32(data[4:8])
 	numInserts := binary.LittleEndian.Uint32(data[8:12])
 
+	if numBits == 0 {
+		return nil, fmt.Errorf("invalid bloom filter data: numBits must be > 0")
+	}
+
+	if numHashes == 0 {
+		return nil, fmt.Errorf("invalid bloom filter data: numHashes must be > 0")
+	}
+
 	expectedBytes := (numBits + 7) / 8
+	if expectedBytes > maxBloomFilterBytes {
+		return nil, fmt.Errorf("invalid bloom filter data: bitset too large (%d bytes > %d bytes)", expectedBytes, maxBloomFilterBytes)
+	}
+
 	if uint32(len(data)-12) != expectedBytes {
 		return nil, fmt.Errorf("invalid bloom filter data: size mismatch")
 	}
 
-	bits := make([]byte, expectedBytes)
+	bits := make([]byte, int(expectedBytes))
 	copy(bits, data[12:])
 
 	return &BloomFilter{
-		bits: bits,
-		numBits: numBits,
-		numHashes: numHashes,
+		bits:       bits,
+		numBits:    numBits,
+		numHashes:  numHashes,
 		numInserts: numInserts,
 	}, nil
 }
@@ -292,9 +306,9 @@ func (bf *BloomFilter) Clone() *BloomFilter {
 	copy(bits, bf.bits)
 
 	return &BloomFilter{
-		bits: bits,
-		numBits: bf.numBits,
-		numHashes: bf.numHashes,
+		bits:       bits,
+		numBits:    bf.numBits,
+		numHashes:  bf.numHashes,
 		numInserts: bf.numInserts,
 	}
 }
@@ -336,21 +350,21 @@ func (pbf *PageBloomFilter) GetFilter() *BloomFilter {
 // GetStats returns statistics about the page Bloom filter
 func (pbf *PageBloomFilter) GetStats() PageBloomFilterStats {
 	return PageBloomFilterStats{
-		PageID: pbf.pageID,
-		NumInserts: pbf.filter.GetNumInserts(),
-		NumBits: pbf.filter.GetNumBits(),
-		NumHashes: pbf.filter.GetNumHashes(),
-		FillRatio: pbf.filter.GetFillRatio(),
+		PageID:       pbf.pageID,
+		NumInserts:   pbf.filter.GetNumInserts(),
+		NumBits:      pbf.filter.GetNumBits(),
+		NumHashes:    pbf.filter.GetNumHashes(),
+		FillRatio:    pbf.filter.GetFillRatio(),
 		EstimatedFPR: pbf.filter.EstimateFalsePositiveRate(),
 	}
 }
 
 // PageBloomFilterStats holds statistics for a page Bloom filter
 type PageBloomFilterStats struct {
-	PageID uint32
-	NumInserts uint32
-	NumBits uint32
-	NumHashes uint32
-	FillRatio float64
+	PageID       uint32
+	NumInserts   uint32
+	NumBits      uint32
+	NumHashes    uint32
+	FillRatio    float64
 	EstimatedFPR float64
 }

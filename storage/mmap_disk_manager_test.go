@@ -63,6 +63,65 @@ func TestMmapAllocatePage(t *testing.T) {
 	}
 }
 
+func TestMmapAllocatePageConcurrentUniqueness(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "mmap_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbFile := filepath.Join(tempDir, "test.db")
+	dm, err := NewMmapDiskManager(dbFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dm.Close()
+
+	const workers = 8
+	start := make(chan struct{})
+	ids := make(chan uint32, workers)
+	errCh := make(chan error, workers)
+	var wg sync.WaitGroup
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+
+			id, allocErr := dm.AllocatePage()
+			if allocErr != nil {
+				errCh <- allocErr
+				return
+			}
+			ids <- id
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(ids)
+	close(errCh)
+
+	for allocErr := range errCh {
+		if allocErr != nil {
+			t.Fatalf("allocation failed: %v", allocErr)
+		}
+	}
+
+	seen := make(map[uint32]struct{}, workers)
+	for id := range ids {
+		if _, exists := seen[id]; exists {
+			t.Fatalf("duplicate page ID allocated: %d", id)
+		}
+		seen[id] = struct{}{}
+	}
+
+	if len(seen) != workers {
+		t.Fatalf("expected %d unique page IDs, got %d", workers, len(seen))
+	}
+}
+
 func TestMmapZeroCopyRead(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "mmap_test")
 	if err != nil {
@@ -212,7 +271,7 @@ func TestMmapBatchWrite(t *testing.T) {
 		}
 		writes[i] = PageWrite{
 			PageID: uint32(i),
-			Data: data,
+			Data:   data,
 		}
 	}
 
@@ -665,7 +724,7 @@ func BenchmarkMmapBatchWrite(b *testing.B) {
 	for i := range writes {
 		writes[i] = PageWrite{
 			PageID: uint32(i),
-			Data: make([]byte, PageSize),
+			Data:   make([]byte, PageSize),
 		}
 	}
 

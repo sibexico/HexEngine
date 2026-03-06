@@ -49,13 +49,13 @@ func TestHistogramPercentiles(t *testing.T) {
 	// Test various percentiles
 	tests := []struct {
 		percentile float64
-		expected float64
-		tolerance float64
+		expected   float64
+		tolerance  float64
 	}{
-		{50, 50.5, 1.0}, // Median
-		{95, 95.05, 1.0}, // 95th percentile
-		{99, 99.01, 1.0}, // 99th percentile
-		{0, 1.0, 0.1}, // Min
+		{50, 50.5, 1.0},   // Median
+		{95, 95.05, 1.0},  // 95th percentile
+		{99, 99.01, 1.0},  // 99th percentile
+		{0, 1.0, 0.1},     // Min
 		{100, 100.0, 0.1}, // Max
 	}
 
@@ -64,6 +64,25 @@ func TestHistogramPercentiles(t *testing.T) {
 		if math.Abs(result-test.expected) > test.tolerance {
 			t.Errorf("P%.1f: expected %.2f, got %.2f", test.percentile, test.expected, result)
 		}
+	}
+}
+
+func TestHistogramPercentileOutOfRangeClamps(t *testing.T) {
+	h := NewHistogram(100)
+
+	for i := 1; i <= 100; i++ {
+		h.Record(float64(i))
+	}
+
+	below := h.Percentile(-25)
+	above := h.Percentile(250)
+
+	if below != 1.0 {
+		t.Errorf("expected negative percentile to clamp to min (1.0), got %.2f", below)
+	}
+
+	if above != 100.0 {
+		t.Errorf("expected percentile above 100 to clamp to max (100.0), got %.2f", above)
 	}
 }
 

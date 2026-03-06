@@ -458,22 +458,28 @@ func TestPageLatchConcurrentAccess(t *testing.T) {
 
 func BenchmarkRWLatchRLock(b *testing.B) {
 	latch := NewRWLatch()
+	dummy := 0
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		latch.RLock()
+		dummy += i
 		latch.RUnlock()
 	}
+	_ = dummy
 }
 
 func BenchmarkRWLatchLock(b *testing.B) {
 	latch := NewRWLatch()
+	dummy := 0
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		latch.Lock()
+		dummy += i
 		latch.Unlock()
 	}
+	_ = dummy
 }
 
 func BenchmarkRWLatchTryRLock(b *testing.B) {
@@ -503,44 +509,56 @@ func BenchmarkRWLatchTryLock(b *testing.B) {
 func BenchmarkCompareReadLocks(b *testing.B) {
 	b.Run("RWLatch", func(b *testing.B) {
 		latch := NewRWLatch()
+		dummy := 0
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
 			latch.RLock()
+			dummy += i
 			latch.RUnlock()
 		}
+		_ = dummy
 	})
 
 	b.Run("RWMutex", func(b *testing.B) {
 		var mutex sync.RWMutex
+		dummy := 0
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
 			mutex.RLock()
+			dummy += i
 			mutex.RUnlock()
 		}
+		_ = dummy
 	})
 }
 
 func BenchmarkCompareWriteLocks(b *testing.B) {
 	b.Run("RWLatch", func(b *testing.B) {
 		latch := NewRWLatch()
+		dummy := 0
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
 			latch.Lock()
+			dummy += i
 			latch.Unlock()
 		}
+		_ = dummy
 	})
 
 	b.Run("RWMutex", func(b *testing.B) {
 		var mutex sync.RWMutex
+		dummy := 0
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
 			mutex.Lock()
+			dummy += i
 			mutex.Unlock()
 		}
+		_ = dummy
 	})
 }
 
@@ -551,16 +569,20 @@ func BenchmarkCompareMixedLoad(b *testing.B) {
 
 		b.RunParallel(func(pb *testing.PB) {
 			i := 0
+			dummy := 0
 			for pb.Next() {
 				if i%10 == 0 {
 					latch.Lock()
+					dummy += i
 					latch.Unlock()
 				} else {
 					latch.RLock()
+					dummy += i
 					latch.RUnlock()
 				}
 				i++
 			}
+			_ = dummy
 		})
 	})
 
@@ -570,16 +592,20 @@ func BenchmarkCompareMixedLoad(b *testing.B) {
 
 		b.RunParallel(func(pb *testing.PB) {
 			i := 0
+			dummy := 0
 			for pb.Next() {
 				if i%10 == 0 {
 					mutex.Lock()
+					dummy += i
 					mutex.Unlock()
 				} else {
 					mutex.RLock()
+					dummy += i
 					mutex.RUnlock()
 				}
 				i++
 			}
+			_ = dummy
 		})
 	})
 }
@@ -607,18 +633,24 @@ func BenchmarkPageLatchOperations(b *testing.B) {
 	})
 
 	b.Run("RLock", func(b *testing.B) {
+		dummy := 0
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			page.RLock()
+			dummy += i
 			page.RUnlock()
 		}
+		_ = dummy
 	})
 
 	b.Run("WLock", func(b *testing.B) {
+		dummy := 0
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			page.WLock()
+			dummy += i
 			page.WUnlock()
 		}
+		_ = dummy
 	})
 }

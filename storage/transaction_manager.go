@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -197,14 +198,6 @@ func (tm *TransactionManager) Commit(txnID uint64) error {
 	}
 	txn.LastLSN = lsn
 
-	// Update transaction state
-	txn.SetState(TxnCommitted)
-
-	// Remove from active transactions
-	tm.mutex.Lock()
-	delete(tm.activeTxns, txnID)
-	tm.mutex.Unlock()
-
 	// Flush log to ensure durability (fsync can take 1-10ms)
 	if tm.enableGroupCommit && tm.groupCommitMgr != nil {
 		// Use group commit for better throughput
@@ -217,6 +210,14 @@ func (tm *TransactionManager) Commit(txnID uint64) error {
 	if err != nil {
 		return fmt.Errorf("failed to flush log: %w", err)
 	}
+
+	// Update transaction state only after durable commit
+	txn.SetState(TxnCommitted)
+
+	// Remove from active transactions
+	tm.mutex.Lock()
+	delete(tm.activeTxns, txnID)
+	tm.mutex.Unlock()
 
 	tm.metrics.RecordTxnCommit() // Track successful commit
 
@@ -248,13 +249,17 @@ func (tm *TransactionManager) Abort(txnID uint64) error {
 	tm.mutex.Unlock()
 
 	// Apply undo operations (without holding transaction manager lock)
+	undoErrors := make([]error, 0)
 	for i := len(undoLogs) - 1; i >= 0; i-- {
 		lsn := undoLogs[i]
 		if err := tm.applyUndo(lsn); err != nil {
-			// Log error but continue undoing other operations
-			// In production, this would be logged to error log
-			_ = err
+			undoErrors = append(undoErrors, fmt.Errorf("undo lsn %d failed: %w", lsn, err))
 		}
+	}
+
+	var undoErr error
+	if len(undoErrors) > 0 {
+		undoErr = errors.Join(undoErrors...)
 	}
 
 	// Write abort log record
@@ -264,20 +269,30 @@ func (tm *TransactionManager) Abort(txnID uint64) error {
 	}
 	lsn, err := tm.logManager.AppendLog(record)
 	if err != nil {
+		if undoErr != nil {
+			return errors.Join(undoErr, fmt.Errorf("failed to append abort log: %w", err))
+		}
 		return fmt.Errorf("failed to append abort log: %w", err)
 	}
 
 	// Flush abort record to ensure durability
 	if err := tm.logManager.Flush(); err != nil {
+		if undoErr != nil {
+			return errors.Join(undoErr, fmt.Errorf("failed to flush abort log: %w", err))
+		}
 		return fmt.Errorf("failed to flush abort log: %w", err)
 	}
 
-	_ = lsn // Use lsn
+	txn.LastLSN = lsn
 
 	tm.metrics.RecordTxnAbort() // Track transaction abort
 
 	// Return transaction to pool
 	txnPool.Put(txn)
+
+	if undoErr != nil {
+		return fmt.Errorf("transaction aborted with undo errors: %w", undoErr)
+	}
 
 	return nil
 }

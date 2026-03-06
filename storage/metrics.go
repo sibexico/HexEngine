@@ -12,9 +12,9 @@ import (
 // Histogram tracks latency distribution with percentile support
 type Histogram struct {
 	samples []float64 // Latencies in microseconds
-	mu sync.RWMutex
-	maxSize int // Maximum samples to retain
-	sorted bool // Track if samples are sorted
+	mu      sync.RWMutex
+	maxSize int  // Maximum samples to retain
+	sorted  bool // Track if samples are sorted
 }
 
 // NewHistogram creates a new histogram with a max sample size
@@ -25,7 +25,7 @@ func NewHistogram(maxSize int) *Histogram {
 	return &Histogram{
 		samples: make([]float64, 0, maxSize),
 		maxSize: maxSize,
-		sorted: true,
+		sorted:  true,
 	}
 }
 
@@ -52,6 +52,12 @@ func (h *Histogram) Percentile(p float64) float64 {
 
 	if len(h.samples) == 0 {
 		return 0
+	}
+
+	if p < 0 {
+		p = 0
+	} else if p > 100 {
+		p = 100
 	}
 
 	// Sort if needed (lazy sorting)
@@ -150,66 +156,66 @@ func (h *Histogram) Reset() {
 // Snapshot returns current percentile statistics
 type HistogramSnapshot struct {
 	Count int
-	Min float64
-	Max float64
-	Mean float64
-	P50 float64 // Median
-	P95 float64
-	P99 float64
-	P999 float64
+	Min   float64
+	Max   float64
+	Mean  float64
+	P50   float64 // Median
+	P95   float64
+	P99   float64
+	P999  float64
 }
 
 // Snapshot captures current histogram statistics
 func (h *Histogram) Snapshot() HistogramSnapshot {
 	return HistogramSnapshot{
 		Count: h.Count(),
-		Min: h.Min(),
-		Max: h.Max(),
-		Mean: h.Mean(),
-		P50: h.Percentile(50),
-		P95: h.Percentile(95),
-		P99: h.Percentile(99),
-		P999: h.Percentile(99.9),
+		Min:   h.Min(),
+		Max:   h.Max(),
+		Mean:  h.Mean(),
+		P50:   h.Percentile(50),
+		P95:   h.Percentile(95),
+		P99:   h.Percentile(99),
+		P999:  h.Percentile(99.9),
 	}
 }
 
 // Metrics tracks storage engine performance metrics
 type Metrics struct {
 	// Buffer Pool Metrics
-	cacheHits atomic.Uint64
-	cacheMisses atomic.Uint64
-	pageEvictions atomic.Uint64
+	cacheHits        atomic.Uint64
+	cacheMisses      atomic.Uint64
+	pageEvictions    atomic.Uint64
 	dirtyPageFlushes atomic.Uint64
 
 	// Transaction Metrics
-	txnsStarted atomic.Uint64
+	txnsStarted   atomic.Uint64
 	txnsCommitted atomic.Uint64
-	txnsAborted atomic.Uint64
+	txnsAborted   atomic.Uint64
 
 	// Recovery Metrics
 	recoveries atomic.Uint64
-	redoOps atomic.Uint64
-	undoOps atomic.Uint64
+	redoOps    atomic.Uint64
+	undoOps    atomic.Uint64
 
 	// Latency Histograms (microseconds)
-	pageFetchLatency *Histogram // FetchPage latency
-	pageFlushLatency *Histogram // FlushPage latency
-	txnCommitLatency *Histogram // Transaction commit latency
+	pageFetchLatency    *Histogram // FetchPage latency
+	pageFlushLatency    *Histogram // FlushPage latency
+	txnCommitLatency    *Histogram // Transaction commit latency
 	bptreeInsertLatency *Histogram // B+ tree insert latency
 	bptreeSearchLatency *Histogram // B+ tree search latency
 
 	// Timing Metrics
 	startTime time.Time
-	mu sync.RWMutex
+	mu        sync.RWMutex
 }
 
 // NewMetrics creates a new metrics tracker
 func NewMetrics() *Metrics {
 	return &Metrics{
-		startTime: time.Now(),
-		pageFetchLatency: NewHistogram(10000),
-		pageFlushLatency: NewHistogram(10000),
-		txnCommitLatency: NewHistogram(10000),
+		startTime:           time.Now(),
+		pageFetchLatency:    NewHistogram(10000),
+		pageFlushLatency:    NewHistogram(10000),
+		txnCommitLatency:    NewHistogram(10000),
 		bptreeInsertLatency: NewHistogram(10000),
 		bptreeSearchLatency: NewHistogram(10000),
 	}
